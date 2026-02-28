@@ -1,0 +1,33 @@
+# Python / Django
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+db.sqlite3
+*.log
+*.pot
+*.mo
+local_settings.py
+media/
+
+# JavaScript / Node
+node_modules/
+dist/
+build/
+.parcel-cache/
+.cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.production
