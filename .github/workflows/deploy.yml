@@ -23,47 +23,39 @@ jobs:
           script: |
             set -e
 
-            ########################################
-            # 1. BACKEND (Django)
-            ########################################
-            echo ">>> Backend deploy boshlandi..."
-            cd /var/www/backend
+            PROJECT_DIR=/var/www/backend/task-manager
 
+            ########################################
+            # 1. Kodlarni yangilash
+            ########################################
+            echo ">>> Git pull..."
+            cd $PROJECT_DIR
             git pull origin main
 
-            # Virtual muhitni faollashtirish
+            ########################################
+            # 2. BACKEND (Django)
+            ########################################
+            echo ">>> Backend deploy..."
+            cd $PROJECT_DIR/backend
+
             source venv/bin/activate
-
-            # Yangi paketlarni o'rnatish
             pip install -r requirements.txt --quiet
-
-            # Migratsiyalarni qo'llash
             python manage.py migrate --no-input
-
-            # Static fayllarni yig'ish (agar kerak bo'lsa)
             # python manage.py collectstatic --no-input
 
-            # Gunicorn yoki systemd servisini qayta ishga tushirish
             sudo systemctl restart task-manager
 
             echo ">>> Backend tayyor!"
 
             ########################################
-            # 2. FRONTEND (React + Vite)
+            # 3. FRONTEND (React + Vite)
             ########################################
-            echo ">>> Frontend deploy boshlandi..."
-            cd /var/www/frontend
+            echo ">>> Frontend build..."
+            cd $PROJECT_DIR/frontend
 
-            git pull origin main
-
-            # Node paketlarini o'rnatish
             npm install --silent
-
-            # Production build qilish
             npm run build
 
-            # Nginx ni qayta yuklash (yangi build/dist fayllarni olishi uchun)
             sudo systemctl reload nginx
 
-            echo ">>> Frontend tayyor!"
             echo "✅ Deploy muvaffaqiyatli yakunlandi!"
