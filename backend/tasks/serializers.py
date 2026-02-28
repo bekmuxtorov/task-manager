@@ -126,19 +126,34 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class TaskAttachmentSerializer(serializers.ModelSerializer):
+    file = serializers.SerializerMethodField()
+
     class Meta:
         model = TaskAttachment
         fields = ('id', 'file', 'file_type', 'created_at')
 
+    def get_file(self, obj):
+        request = self.context.get('request')
+        if obj.file and request:
+            return request.build_absolute_uri(obj.file.url)
+        return obj.file.url if obj.file else None
+
 
 class TaskSerializer(serializers.ModelSerializer):
     assigned_to_name = serializers.SerializerMethodField()
-    attachments = TaskAttachmentSerializer(many=True, read_only=True)
+    attachments = serializers.SerializerMethodField()
     duration_info = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
         fields = '__all__'
+
+    def get_attachments(self, obj):
+        request = self.context.get('request')
+        serializer = TaskAttachmentSerializer(
+            obj.attachments.all(), many=True, context={'request': request}
+        )
+        return serializer.data
 
     def get_assigned_to_name(self, obj):
         return str(obj.assigned_to)

@@ -44,6 +44,7 @@ const AdminDashboard = () => {
     const [filterProgrammer, setFilterProgrammer] = useState('');
     const [filterStatus, setFilterStatus] = useState('');
     const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'table'
+    const [rejectModal, setRejectModal] = useState({ open: false, task: null, reason: '' });
     const { logout, user } = useContext(AuthContext);
     const navigate = useNavigate();
 
@@ -66,6 +67,15 @@ const AdminDashboard = () => {
         if (!path) return '';
         if (path.startsWith('http')) return path;
         return `${API_URL}${path}`;
+    };
+
+    const openTaskDetail = async (task) => {
+        try {
+            const res = await api.get(`tasks/${task.id}/`);
+            setSelectedTask(res.data);
+        } catch {
+            setSelectedTask(task); // fallback
+        }
     };
 
     const handleFileChange = (e, field) => {
@@ -208,9 +218,20 @@ const AdminDashboard = () => {
         fetchTasks();
     };
 
-    const rejectTask = async (id) => {
-        await api.post(`tasks/${id}/reject/`);
-        fetchTasks();
+    const rejectTask = async () => {
+        if (!rejectModal.reason.trim()) {
+            alert('Iltimos bekor qilish sababini kiriting!');
+            return;
+        }
+        try {
+            await api.post(`tasks/${rejectModal.task.id}/reject/`, { reason: rejectModal.reason });
+            setRejectModal({ open: false, task: null, reason: '' });
+            setSelectedTask(null);
+            fetchTasks();
+            alert(`Task rad etildi va programmistga qayta yuborildi!`);
+        } catch (err) {
+            alert('Xatolik yuz berdi!');
+        }
     };
 
     const getBadgeClass = (status) => {
@@ -369,7 +390,7 @@ const AdminDashboard = () => {
                         {viewMode === 'grid' ? (
                             <div className="task-grid">
                                 {filteredTasks.map(task => (
-                                    <div key={task.id} className="card" onClick={() => setSelectedTask(task)} style={{ cursor: 'pointer', position: 'relative' }}>
+                                    <div key={task.id} className="card" onClick={() => openTaskDetail(task)} style={{ cursor: 'pointer', position: 'relative' }}>
                                         <div style={{ position: 'absolute', top: '1rem', right: '1rem', display: 'flex', gap: '0.5rem' }}>
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); handleEditTask(task); }}
@@ -408,33 +429,44 @@ const AdminDashboard = () => {
                                             <th>Mas'ul</th>
                                             <th>Status</th>
                                             <th>Vaqt</th>
-                                            <th>Amallar</th>
+                                            <th style={{ minWidth: '180px', whiteSpace: 'nowrap' }}>Amallar</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {filteredTasks.map(task => (
-                                            <tr key={task.id} onClick={() => setSelectedTask(task)}>
+                                            <tr key={task.id} onClick={() => openTaskDetail(task)}>
                                                 <td>#{task.id}</td>
                                                 <td style={{ fontWeight: '600' }}>{task.title}</td>
                                                 <td>{task.assigned_to_name}</td>
                                                 <td><span className={`badge ${getBadgeClass(task.status)}`}>{task.status}</span></td>
                                                 <td style={{ fontSize: '0.875rem' }}>{task.duration_info?.todo_to_done || '-'}</td>
-                                                <td>
-                                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                <td onClick={(e) => e.stopPropagation()}>
+                                                    <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); handleEditTask(task); }}
                                                             className="btn-outline"
-                                                            style={{ padding: '0.3rem', fontSize: '0.8rem' }}
+                                                            title="Tahrirlash"
+                                                            style={{ padding: '0.3rem 0.55rem', fontSize: '0.875rem', lineHeight: 1 }}
                                                         >✎</button>
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); deleteTask(task.id); }}
-                                                            className="btn-outline"
-                                                            style={{ padding: '0.3rem', fontSize: '0.8rem', color: 'var(--danger)' }}
+                                                            title="O'chirish"
+                                                            style={{ padding: '0.3rem 0.55rem', fontSize: '0.875rem', lineHeight: 1, background: 'transparent', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--danger)', cursor: 'pointer' }}
                                                         >🗑</button>
                                                         {task.status === 'DONE' && (
                                                             <>
-                                                                <button className="btn-success" onClick={(e) => { e.stopPropagation(); approveTask(task.id); }} style={{ padding: '0.4rem', fontSize: '0.7rem' }}>Ok</button>
-                                                                <button className="btn-danger" onClick={(e) => { e.stopPropagation(); rejectTask(task.id); }} style={{ padding: '0.4rem', fontSize: '0.7rem' }}>X</button>
+                                                                <button
+                                                                    className="btn-success"
+                                                                    title="Tasdiqlash"
+                                                                    onClick={(e) => { e.stopPropagation(); approveTask(task.id); }}
+                                                                    style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem', lineHeight: 1 }}
+                                                                >✓ Ok</button>
+                                                                <button
+                                                                    className="btn-danger"
+                                                                    title="Rad etish"
+                                                                    onClick={(e) => { e.stopPropagation(); setRejectModal({ open: true, task, reason: '' }); }}
+                                                                    style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem', lineHeight: 1 }}
+                                                                >✕</button>
                                                             </>
                                                         )}
                                                     </div>
@@ -589,6 +621,13 @@ const AdminDashboard = () => {
                             </div>
                         </div>
 
+                        {selectedTask.rejection_reason && (
+                            <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '12px', padding: '1rem', marginBottom: '1.5rem' }}>
+                                <p style={{ fontSize: '0.75rem', color: 'var(--danger)', textTransform: 'uppercase', marginBottom: '0.4rem', fontWeight: '700' }}>⚠ Bekor qilish sababi</p>
+                                <p style={{ color: 'var(--text-main)', lineHeight: '1.6' }}>{selectedTask.rejection_reason}</p>
+                            </div>
+                        )}
+
                         <div style={{ display: 'flex', gap: '1rem', marginTop: 'auto' }}>
                             {selectedTask.status === 'PENDING' && (
                                 <button className="btn-primary" style={{ flex: 1 }} onClick={() => { startTask(selectedTask.id); setSelectedTask(null); }}>
@@ -599,7 +638,7 @@ const AdminDashboard = () => {
                             {selectedTask.status === 'DONE' && (
                                 <>
                                     <button className="btn-success" style={{ flex: 1 }} onClick={() => { approveTask(selectedTask.id); setSelectedTask(null); }}>√ Tasdiqlash</button>
-                                    <button className="btn-danger" style={{ flex: 1 }} onClick={() => { rejectTask(selectedTask.id); setSelectedTask(null); }}>× Rad etish</button>
+                                    <button className="btn-danger" style={{ flex: 1 }} onClick={() => { setRejectModal({ open: true, task: selectedTask, reason: '' }); }}>× Rad etish</button>
                                 </>
                             )}
 
@@ -816,6 +855,43 @@ const AdminDashboard = () => {
                                 userSelect: 'none'
                             }}
                         />
+                    </div>
+                </div>
+            )}
+
+            {/* Reject Reason Modal */}
+            {rejectModal.open && (
+                <div className="image-modal" onClick={() => setRejectModal({ open: false, task: null, reason: '' })}>
+                    <div className="card glass" style={{ maxWidth: '480px', width: '100%', padding: '2rem' }} onClick={(e) => e.stopPropagation()}>
+                        <h3 style={{ marginBottom: '0.5rem', color: 'var(--danger)' }}>✕ Rad etish sababi</h3>
+                        <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
+                            Task: <strong>{rejectModal.task?.title}</strong>
+                        </p>
+                        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Sababni kiriting (majburiy):</p>
+                        <textarea
+                            autoFocus
+                            rows={4}
+                            value={rejectModal.reason}
+                            onChange={(e) => setRejectModal({ ...rejectModal, reason: e.target.value })}
+                            placeholder="Masalan: Talablar bajarilmagan, kod sifati past..."
+                            style={{
+                                width: '100%',
+                                background: 'rgba(255,255,255,0.04)',
+                                border: '1px solid rgba(239,68,68,0.4)',
+                                borderRadius: '10px',
+                                color: 'var(--text-main)',
+                                padding: '0.75rem',
+                                fontSize: '0.9rem',
+                                resize: 'vertical',
+                                outline: 'none',
+                                marginBottom: '1.25rem',
+                                fontFamily: 'inherit'
+                            }}
+                        />
+                        <div style={{ display: 'flex', gap: '1rem' }}>
+                            <button className="btn-danger" style={{ flex: 1 }} onClick={rejectTask}>✕ Rad etish va qayta yuborish</button>
+                            <button className="btn-outline" style={{ flex: 1 }} onClick={() => setRejectModal({ open: false, task: null, reason: '' })}>Bekor qilish</button>
+                        </div>
                     </div>
                 </div>
             )}

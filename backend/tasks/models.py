@@ -20,6 +20,12 @@ class Task(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # Rejection reason
+    rejection_reason = models.TextField(null=True, blank=True)
+
+    # Queue position for ordering tasks for a programmer
+    queue_order = models.PositiveIntegerField(default=0)
+
     # Time tracking
     pending_at = models.DateTimeField(null=True, blank=True)
     todo_at = models.DateTimeField(null=True, blank=True)

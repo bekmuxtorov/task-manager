@@ -5,7 +5,7 @@ from .models import Task, Programmer, TaskAttachment, User
 from .serializers import TaskSerializer, UserSerializer, ProgrammerSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -32,13 +32,30 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 class TaskViewSet(viewsets.ModelViewSet):
     queryset = Task.objects.all().order_by('-created_at')
     serializer_class = TaskSerializer
-    parser_classes = (MultiPartParser, FormParser)
+    parser_classes = (MultiPartParser, FormParser, JSONParser)
 
     def get_queryset(self):
         user = self.request.user
         if user.is_staff:
-            return Task.objects.all().order_by('-created_at')
-        return Task.objects.filter(assigned_to__user=user).order_by('-created_at')
+            return Task.objects.all().order_by('queue_order', '-created_at')
+        return Task.objects.filter(assigned_to__user=user).order_by('queue_order', '-created_at')
+
+    def _save_attachments(self, task, request):
+        """Save uploaded files as TaskAttachment records."""
+        images = request.FILES.getlist('images')
+        for img in images:
+            TaskAttachment.objects.create(
+                task=task, file=img, file_type='IMAGE')
+
+        videos = request.FILES.getlist('videos')
+        for vid in videos:
+            TaskAttachment.objects.create(
+                task=task, file=vid, file_type='VIDEO')
+
+        audios = request.FILES.getlist('audios')
+        for aud in audios:
+            TaskAttachment.objects.create(
+                task=task, file=aud, file_type='AUDIO')
 
     def perform_create(self, serializer):
         if not self.request.user.is_staff:
@@ -55,24 +72,11 @@ class TaskViewSet(viewsets.ModelViewSet):
             extra_data['todo_at'] = timezone.now()
 
         task = serializer.save(**extra_data)
+        self._save_attachments(task, self.request)
 
-        # Handle multiple images
-        images = self.request.FILES.getlist('images')
-        for img in images:
-            TaskAttachment.objects.create(
-                task=task, file=img, file_type='IMAGE')
-
-        # Handle multiple videos
-        videos = self.request.FILES.getlist('videos')
-        for vid in videos:
-            TaskAttachment.objects.create(
-                task=task, file=vid, file_type='VIDEO')
-
-        # Handle multiple audios
-        audios = self.request.FILES.getlist('audios')
-        for aud in audios:
-            TaskAttachment.objects.create(
-                task=task, file=aud, file_type='AUDIO')
+    def perform_update(self, serializer):
+        task = serializer.save()
+        self._save_attachments(task, self.request)
 
     @action(detail=True, methods=['post'])
     def start(self, request, pk=None):
@@ -112,12 +116,38 @@ class TaskViewSet(viewsets.ModelViewSet):
     def reject(self, request, pk=None):
         if not request.user.is_staff:
             return Response({'error': 'Faqat adminlar rad etishi mumkin'}, status=status.HTTP_403_FORBIDDEN)
+
+        reason = request.data.get('reason', '').strip()
+        if not reason:
+            return Response({'error': 'Bekor qilish sababi kiritilishi shart!'}, status=status.HTTP_400_BAD_REQUEST)
+
         from django.utils import timezone
         task = self.get_object()
         task.status = 'REJECTED'
         task.rejected_at = timezone.now()
+        task.rejection_reason = reason
         task.save()
-        return Response({'status': 'Task rad etildi'})
+
+        # Re-queue: create a new task for the same programmer after existing active tasks
+        programmer = task.assigned_to
+        # Find the last queue_order for this programmer's active tasks
+        active_tasks = Task.objects.filter(
+            assigned_to=programmer,
+            status__in=['PENDING', 'TODO']
+        ).order_by('-queue_order')
+        last_order = active_tasks.first().queue_order if active_tasks.exists() else 0
+
+        Task.objects.create(
+            title=task.title,
+            description=task.description,
+            assigned_to=programmer,
+            status='TODO',
+            todo_at=timezone.now(),
+            queue_order=last_order + 1,
+            rejection_reason=f"Qayta bajarish (sabab: {reason})"
+        )
+
+        return Response({'status': f'Task rad etildi va programmistga qayta yuborildi. Sabab: {reason}'})
 
 
 class ProgrammerViewSet(viewsets.ModelViewSet):

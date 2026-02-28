@@ -13,6 +13,8 @@ const ProgrammerDashboard = () => {
     const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
     const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
     const [selectedTask, setSelectedTask] = useState(null);
+    const [activeTaskDetail, setActiveTaskDetail] = useState(null);
+    const [confirmModal, setConfirmModal] = useState(false);
     const { user, logout } = useContext(AuthContext);
     const navigate = useNavigate();
 
@@ -23,6 +25,17 @@ const ProgrammerDashboard = () => {
     const fetchTasks = async () => {
         const res = await api.get('tasks/');
         setTasks(res.data);
+        const found = res.data.find(t => t.status === 'TODO' || t.status === 'REJECTED');
+        if (found) fetchActiveTaskDetail(found.id);
+    };
+
+    const fetchActiveTaskDetail = async (taskId) => {
+        try {
+            const res = await api.get(`tasks/${taskId}/`);
+            setActiveTaskDetail(res.data);
+        } catch {
+            setActiveTaskDetail(null);
+        }
     };
 
     const completeTask = async (id) => {
@@ -39,6 +52,15 @@ const ProgrammerDashboard = () => {
         if (!path) return '';
         if (path.startsWith('http')) return path;
         return `${API_URL}${path}`;
+    };
+
+    const openTaskDetail = async (task) => {
+        try {
+            const res = await api.get(`tasks/${task.id}/`);
+            setSelectedTask(res.data);
+        } catch {
+            setSelectedTask(task);
+        }
     };
 
     const getBadgeClass = (status) => {
@@ -72,7 +94,9 @@ const ProgrammerDashboard = () => {
                     <div className="card" style={{ borderLeft: '4px solid var(--primary)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
                             <span className={`badge ${getBadgeClass(activeTask.status)}`}>Bajarilmoqda</span>
-                            <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>Bugun topshirilishi kerak</span>
+                            <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+                                Yaratilgan: {new Date(activeTask.created_at).toLocaleString('ru-RU')}
+                            </span>
                         </div>
                         <h2 style={{ fontSize: '1.75rem', marginBottom: '1rem' }}>{activeTask.title}</h2>
                         <p style={{ color: 'var(--text-main)', fontSize: '1.125rem', marginBottom: '1.5rem', lineHeight: '1.6' }}>
@@ -80,7 +104,7 @@ const ProgrammerDashboard = () => {
                         </p>
 
                         <div style={{ marginBottom: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                            {activeTask.attachments?.map((att, index) => (
+                            {(activeTaskDetail || activeTask).attachments?.map((att, index) => (
                                 <div key={index} style={{ borderBottom: '1px solid var(--border)', paddingBottom: '1.5rem' }}>
                                     <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
                                         {att.file_type === 'IMAGE' ? 'Rasm:' : att.file_type === 'VIDEO' ? 'Video:' : 'Ovozli xabar:'}
@@ -107,7 +131,11 @@ const ProgrammerDashboard = () => {
                             ))}
                         </div>
 
-                        <button className="btn-primary" onClick={() => completeTask(activeTask.id)} style={{ fontSize: '1rem', padding: '1rem' }}>
+                        <button
+                            className="btn-primary"
+                            onClick={() => setConfirmModal(true)}
+                            style={{ fontSize: '1rem', padding: '1rem' }}
+                        >
                             Bajardim deb belgilash
                         </button>
                     </div>
@@ -291,6 +319,90 @@ const ProgrammerDashboard = () => {
                                 boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5)'
                             }}
                         />
+                    </div>
+                </div>
+            )}
+            {confirmModal && activeTask && (
+                <div className="image-modal" onClick={() => setConfirmModal(false)}>
+                    <div
+                        className="card glass"
+                        style={{ maxWidth: '560px', width: '100%', padding: '2rem', maxHeight: '85vh', overflowY: 'auto' }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Header */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '1px solid var(--border)' }}>
+                            <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--warning)', flexShrink: 0 }} />
+                            <h3 style={{ fontSize: '1.1rem', fontWeight: '700' }}>Vazifani tasdiqlash</h3>
+                        </div>
+
+                        {/* Task info */}
+                        <div style={{ marginBottom: '1.5rem' }}>
+                            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Vazifa</p>
+                            <h4 style={{ fontSize: '1.25rem', fontWeight: '700', marginBottom: '0.75rem' }}>{(activeTaskDetail || activeTask).title}</h4>
+                            <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: '1.7', whiteSpace: 'pre-wrap' }}>
+                                {(activeTaskDetail || activeTask).description}
+                            </p>
+                        </div>
+
+                        {/* Attachments if any */}
+                        {(activeTaskDetail || activeTask).attachments?.length > 0 && (
+                            <div style={{ marginBottom: '1.5rem' }}>
+                                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Yuklangan fayllar</p>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                    {(activeTaskDetail || activeTask).attachments.map((att, i) => (
+                                        <div key={i}>
+                                            {att.file_type === 'IMAGE' && (
+                                                <img
+                                                    src={getFileUrl(att.file)}
+                                                    alt="attachment"
+                                                    style={{ maxWidth: '100%', borderRadius: '8px', border: '1px solid var(--border)' }}
+                                                />
+                                            )}
+                                            {att.file_type === 'VIDEO' && (
+                                                <video controls style={{ maxWidth: '100%', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                                    <source src={getFileUrl(att.file)} />
+                                                </video>
+                                            )}
+                                            {att.file_type === 'AUDIO' && (
+                                                <audio controls style={{ width: '100%' }}>
+                                                    <source src={getFileUrl(att.file)} />
+                                                </audio>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Confirmation question */}
+                        <div style={{
+                            background: 'rgba(99,102,241,0.08)',
+                            border: '1px solid rgba(99,102,241,0.25)',
+                            borderRadius: '12px',
+                            padding: '1.25rem',
+                            marginBottom: '1.5rem'
+                        }}>
+                            <p style={{ fontSize: '1rem', fontWeight: '600', textAlign: 'center', lineHeight: '1.6' }}>
+                                ✅ Yuqoridagi vazifa talablariga to'liq javob berdingizmi?
+                            </p>
+                        </div>
+
+                        {/* Buttons */}
+                        <div style={{ display: 'flex', gap: '1rem' }}>
+                            <button
+                                className="btn-success"
+                                style={{ flex: 1, fontSize: '1rem', padding: '0.9rem' }}
+                                onClick={() => {
+                                    setConfirmModal(false);
+                                    completeTask((activeTaskDetail || activeTask).id);
+                                }}
+                            >✓ Ha, tugatdim</button>
+                            <button
+                                className="btn-outline"
+                                style={{ flex: 1, fontSize: '1rem', padding: '0.9rem' }}
+                                onClick={() => setConfirmModal(false)}
+                            >Yo'q, davom etaman</button>
+                        </div>
                     </div>
                 </div>
             )}
